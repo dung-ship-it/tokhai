@@ -65,17 +65,17 @@ def check_tables(conn: pyodbc.Connection) -> bool:
 # Lấy danh sách cột thực tế
 # ---------------------------------------------------------------------------
 
-def get_dhoadon_columns(conn: pyodbc.Connection) -> list[str]:
+def get_dhoadon_columns(conn: pyodbc.Connection) -> list:
     """Trả về danh sách tên cột thực tế của bảng DHOADON."""
     return _get_columns(conn, TABLE_HOADON)
 
 
-def get_dhoadon_chitiet_columns(conn: pyodbc.Connection) -> list[str]:
+def get_dhoadon_chitiet_columns(conn: pyodbc.Connection) -> list:
     """Trả về danh sách tên cột thực tế của bảng DHOADON_CHITIET."""
     return _get_columns(conn, TABLE_HOADON_CHITIET)
 
 
-def _get_columns(conn: pyodbc.Connection, table: str) -> list[str]:
+def _get_columns(conn: pyodbc.Connection, table: str) -> list:
     cursor = conn.cursor()
     cursor.execute(
         "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
@@ -114,11 +114,14 @@ def insert_hoadon(conn: pyodbc.Connection, header_data: dict) -> int:
 
     cols_str = ", ".join(row.keys())
     placeholders = ", ".join("?" for _ in row)
-    sql = f"INSERT INTO {TABLE_HOADON} ({cols_str}) VALUES ({placeholders}); SELECT SCOPE_IDENTITY();"
+    sql_insert = f"INSERT INTO {TABLE_HOADON} ({cols_str}) VALUES ({placeholders})"
 
     logger.info("INSERT DHOADON — %d trường: %s", len(row), list(row.keys()))
     cursor = conn.cursor()
-    cursor.execute(sql, list(row.values()))
+    # Bước 1: thực hiện INSERT
+    cursor.execute(sql_insert, list(row.values()))
+    # Bước 2: lấy ID vừa insert (tách riêng để tương thích SQL Server 2008)
+    cursor.execute("SELECT SCOPE_IDENTITY()")
     new_id = int(cursor.fetchone()[0])
     logger.info("Đã insert DHOADON — DHOADONID = %d", new_id)
     return new_id
@@ -128,7 +131,7 @@ def insert_hoadon(conn: pyodbc.Connection, header_data: dict) -> int:
 # Insert chi tiết hóa đơn
 # ---------------------------------------------------------------------------
 
-def insert_hoadon_chitiet(conn: pyodbc.Connection, hoadon_id: int, items: list[dict]) -> int:
+def insert_hoadon_chitiet(conn: pyodbc.Connection, hoadon_id: int, items: list) -> int:
     """
     Insert các dòng hàng hóa vào bảng DHOADON_CHITIET.
 
