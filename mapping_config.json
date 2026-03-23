@@ -1,0 +1,18 @@
+{
+  "NguoiXuatKhau_Ma": {"xml_field": "BenBanMaSoThue", "default": ""},
+  "NguoiXuatKhau_Ten": {"xml_field": "BenBanTenDonVi", "default": ""},
+  "NguoiXuatKhau_DiaChi": {"xml_field": "BenBanDiaChi", "default": ""},
+  "NguoiXuatKhau_MaBuuChinh": {"xml_field": "BenBanDienThoai", "default": ""},
+  "NguoiNhapKhau_Ma": {"xml_field": "BenMuaMaSoThue", "default": ""},
+  "NguoiNhapKhau_Ten": {"xml_field": "BenMuaTenDonVi", "default": ""},
+  "NguoiNhapKhau_DiaChi": {"xml_field": "BenMuaDiaChi", "default": ""},
+  "SoHoaDon": {"xml_field": "SoHoaDon", "default": ""},
+  "NgayPhatHanh": {"xml_field": "NgayXuatHoaDon", "default": ""},
+  "TongTriGiaHoaDon": {"xml_field": "TongTienThanhToan", "default": ""},
+  "MaDongTienCuaHoaDon": {"xml_field": "DongTienThanhToan", "default": "VND"},
+  "PhuongThucThanhToan": {"xml_field": "HinhThucThanhToan", "default": ""},
+  "SoHopDong": {"xml_field": "SoHopDong", "default": ""},
+  "NgayHopDong": {"xml_field": "NgayHopDong", "default": ""},
+  "CoQuanHaiQuan": {"xml_field": "", "default": "01B1"},
+  "MaBoPhanXuLyToKhai": {"xml_field": "", "default": "00"}
+}
