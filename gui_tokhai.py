@@ -667,31 +667,37 @@ class ToKhaiApp(tk.Tk):
                 pass
 
     def _do_insert(self, conn):
-        import pyodbc
-
         cursor = conn.cursor()
 
-        # ---- Kiểm tra bảng DTOKHAIMD ----
-        for tbl in ("DTOKHAIMD", "DTOKHAIMD_CHITIET"):
-            cursor.execute(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ?", tbl
-            )
-            if cursor.fetchone()[0] == 0:
-                raise RuntimeError(f"Bảng '{tbl}' không tồn tại trong database.")
+        # ---- Kiểm tra bảng DTOKHAIMD tồn tại ----
+        cursor.execute(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ?", "DTOKHAIMD"
+        )
+        if cursor.fetchone()[0] == 0:
+            raise RuntimeError("Bảng 'DTOKHAIMD' không tồn tại trong database.")
 
-        # ---- Lấy danh sách cột thực tế ----
-        def get_columns(table):
-            cursor.execute(
-                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
-                "WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
-                table,
-            )
-            return [r[0] for r in cursor.fetchall()]
+        # ---- Kiểm tra bảng DHANGMDDK tồn tại ----
+        cursor.execute(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ?", "DHANGMDDK"
+        )
+        if cursor.fetchone()[0] == 0:
+            raise RuntimeError("Bảng 'DHANGMDDK' không tồn tại trong database.")
 
-        hdr_cols = get_columns("DTOKHAIMD")
-        det_cols = get_columns("DTOKHAIMD_CHITIET")
+        # ---- Lấy danh sách cột thực tế của DTOKHAIMD ----
+        cursor.execute(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_NAME = 'DTOKHAIMD' ORDER BY ORDINAL_POSITION"
+        )
+        hdr_cols = [r[0] for r in cursor.fetchall()]
 
-        # ---- Xây dựng dict header ----
+        # ---- Lấy danh sách cột thực tế của DHANGMDDK ----
+        cursor.execute(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_NAME = 'DHANGMDDK' ORDER BY ORDINAL_POSITION"
+        )
+        det_cols = [r[0] for r in cursor.fetchall()]
+
+        # ---- Xây dựng dict header từ form ----
         hdr_data = {}
         for field, var in self._fields.items():
             if field.startswith("_"):
@@ -701,46 +707,75 @@ class ToKhaiApp(tk.Tk):
 
         # Ghi chú
         if hasattr(self, "_txt_ghichu"):
-            hdr_data["PhanGhiChu"] = self._txt_ghichu.get("1.0", "end").strip() or None
+            hdr_data["TTTK"] = self._txt_ghichu.get("1.0", "end").strip() or None
 
-        # Chỉ giữ cột có trong bảng, bỏ identity
-        identity_hdr = "DTOKHAIMDID"
+        # ---- INSERT vào DTOKHAIMD ----
+        # Identity column của DTOKHAIMD là _DToKhaiMDID
+        identity_hdr = "_DToKhaiMDID"
         insertable_hdr = [c for c in hdr_cols if c != identity_hdr]
         row_hdr = {k: v for k, v in hdr_data.items() if k in insertable_hdr}
 
         if not row_hdr:
             raise ValueError("Không có trường nào khớp với cột trong bảng DTOKHAIMD.")
 
-        cols_str = ", ".join(row_hdr.keys())
+        cols_str = ", ".join(f"[{c}]" for c in row_hdr.keys())
         placeholders = ", ".join("?" for _ in row_hdr)
         sql_hdr = f"INSERT INTO DTOKHAIMD ({cols_str}) VALUES ({placeholders})"
         cursor.execute(sql_hdr, list(row_hdr.values()))
 
-        # Lấy ID vừa insert
+        # ---- Lấy _DToKhaiMDID vừa insert ----
         from ecus_importer import _fetch_last_identity
         new_id = _fetch_last_identity(cursor, "DTOKHAIMD")
-        logger.info("Đã insert DTOKHAIMD — DTOKHAIMDID = %d", new_id)
+        logger.info("Đã insert DTOKHAIMD — _DToKhaiMDID = %d", new_id)
 
-        # ---- Insert chi tiết ----
-        identity_det = "DTOKHAIMD_CHITIETID"
-        fk_det = "DTOKHAIMDID"
+        # ---- INSERT từng dòng hàng vào DHANGMDDK ----
+        # Identity column của DHANGMDDK là _DHangMDDKID
+        identity_det = "_DHangMDDKID"
+        fk_det = "_DToKhaiMDID"
         insertable_det = [c for c in det_cols if c != identity_det]
 
+        # Mapping từ tên field trong form → tên cột trong DHANGMDDK
+        FIELD_TO_COL = {
+            "MaHang":       "MA_HANG",
+            "TenHang":      "TEN_HANG",
+            "MaHS":         "Ma_HTS",
+            "XuatXu":       "NUOC_XX",
+            "Luong":        "LUONG",
+            "DonViTinh":    "MA_DVT",
+            "Luong2":       "LUONG2",
+            "DonViTinh2":   "MA_DVT2",
+            "DonGiaHoaDon": "DGIA_TT",
+            "TriGiaHoaDon": "TRIGIA_TT",
+        }
+
         for idx, item in enumerate(self._item_rows, start=1):
-            item_data = {fk_det: new_id}
-            item_data.update({k: (v if v != "" else None) for k, v in item.items()})
+            item_data = {fk_det: new_id, "STTHANG": idx}
+            for form_field, db_col in FIELD_TO_COL.items():
+                val = item.get(form_field, "")
+                # Chuyển số thực cho các cột decimal
+                if db_col in ("LUONG", "LUONG2", "DGIA_TT", "TRIGIA_TT", "TRIGIA_KB", "DGIA_KB"):
+                    try:
+                        val = float(val) if val != "" else None
+                    except (ValueError, TypeError):
+                        val = None
+                else:
+                    val = val if val != "" else None
+                item_data[db_col] = val
+
+            # Chỉ giữ cột có trong bảng thực tế
             row_det = {k: v for k, v in item_data.items() if k in insertable_det}
             if not row_det:
                 continue
-            cols_d = ", ".join(row_det.keys())
+
+            cols_d = ", ".join(f"[{c}]" for c in row_det.keys())
             ph_d = ", ".join("?" for _ in row_det)
             cursor.execute(
-                f"INSERT INTO DTOKHAIMD_CHITIET ({cols_d}) VALUES ({ph_d})",
+                f"INSERT INTO DHANGMDDK ({cols_d}) VALUES ({ph_d})",
                 list(row_det.values()),
             )
-            logger.debug("Inserted DTOKHAIMD_CHITIET dòng %d", idx)
+            logger.debug("Inserted DHANGMDDK dòng %d", idx)
 
-        logger.info("Đã insert %d dòng chi tiết.", len(self._item_rows))
+        logger.info("Đã insert %d dòng hàng vào DHANGMDDK.", len(self._item_rows))
 
 
 # ---------------------------------------------------------------------------
