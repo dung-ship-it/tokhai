@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<HDon>
+  <DLHDon>
+    <TTChung>
+      <KHMSHDon>1</KHMSHDon>
+      <KHHDon>E24TAA</KHHDon>
+      <SHDon>000001</SHDon>
+      <NLap>2024-01-15</NLap>
+      <LoaiTien>VND</LoaiTien>
+      <TenHDon>PHIẾU XUẤT KHO KIÊM VẬN CHUYỂN NỘI BỘ</TenHDon>
+    </TTChung>
+    <NDHDon>
+      <NBan>
+        <Ten>CÔNG TY TNHH SẢN XUẤT XYZ</Ten>
+        <MST>0123456789</MST>
+        <DChi>123 Đường ABC, Quận 1, TP.HCM</DChi>
+        <SDThoai>0901234567</SDThoai>
+        <Fax>028-12345678</Fax>
+        <STKNHang>12345678901</STKNHang>
+        <TNHang>Ngân hàng Vietcombank - Chi nhánh HCM</TNHang>
+      </NBan>
+      <NMua>
+        <Ten>CHI NHÁNH CÔNG TY TNHH SẢN XUẤT XYZ TẠI HÀ NỘI</Ten>
+        <MST>0123456789-001</MST>
+        <DChi>456 Đường DEF, Quận Hoàn Kiếm, Hà Nội</DChi>
+        <SDThoai>0912345678</SDThoai>
+        <HoTen>Nguyễn Văn A</HoTen>
+      </NMua>
+      <DSHHDVu>
+        <HHDVu>
+          <TChat>1</TChat>
+          <STT>1</STT>
+          <MHHDVu>SP001</MHHDVu>
+          <THHDVu>Sản phẩm A - Loại 1</THHDVu>
+          <DVTinh>Cái</DVTinh>
+          <SLuong>100</SLuong>
+          <DGia>50000</DGia>
+          <ThTien>5000000</ThTien>
+          <STCKhau>0</STCKhau>
+          <TSuat>10</TSuat>
+          <TienThue>500000</TienThue>
+        </HHDVu>
+        <HHDVu>
+          <TChat>1</TChat>
+          <STT>2</STT>
+          <MHHDVu>SP002</MHHDVu>
+          <THHDVu>Sản phẩm B - Loại 2</THHDVu>
+          <DVTinh>Hộp</DVTinh>
+          <SLuong>50</SLuong>
+          <DGia>120000</DGia>
+          <ThTien>6000000</ThTien>
+          <STCKhau>0</STCKhau>
+          <TSuat>10</TSuat>
+          <TienThue>600000</TienThue>
+        </HHDVu>
+      </DSHHDVu>
+      <TToan>11000000</TToan>
+      <TgTThue>1100000</TgTThue>
+      <TTTBChu>Mười hai triệu một trăm nghìn đồng</TTTBChu>
+      <HTTToan>CK</HTTToan>
+      <SoHDVChuyen>HD2024001</SoHDVChuyen>
+      <HoTenNVChuyen>Trần Văn B</HoTenNVChuyen>
+      <MPTVChuyen>51H-12345</MPTVChuyen>
+      <XuatTaiKho>Kho A - 123 Đường ABC, TP.HCM</XuatTaiKho>
+      <NhapTaiKho>Kho B - 456 Đường DEF, Hà Nội</NhapTaiKho>
+    </NDHDon>
+  </DLHDon>
+</HDon>
