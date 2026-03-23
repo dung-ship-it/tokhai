@@ -91,6 +91,31 @@ def _get_columns(conn: pyodbc.Connection, table: str) -> list:
 # Insert hóa đơn
 # ---------------------------------------------------------------------------
 
+def _fetch_last_identity(cursor, table: str) -> int:
+    """
+    Lấy ID vừa INSERT — thử lần lượt SCOPE_IDENTITY → @@IDENTITY → IDENT_CURRENT.
+    Tương thích SQL Server 2008+.
+
+    Raises:
+        RuntimeError: Nếu không lấy được giá trị nào.
+    """
+    cursor.execute("SELECT SCOPE_IDENTITY()")
+    row_id = cursor.fetchone()[0]
+
+    if row_id is None:
+        cursor.execute("SELECT @@IDENTITY")
+        row_id = cursor.fetchone()[0]
+
+    if row_id is None:
+        cursor.execute(f"SELECT IDENT_CURRENT('{table}')")
+        row_id = cursor.fetchone()[0]
+
+    if row_id is None:
+        raise RuntimeError(f"Không lấy được identity sau khi INSERT vào '{table}'.")
+
+    return int(row_id)
+
+
 def insert_hoadon(conn: pyodbc.Connection, header_data: dict) -> int:
     """
     Insert một bản ghi vào bảng DHOADON.
@@ -120,9 +145,8 @@ def insert_hoadon(conn: pyodbc.Connection, header_data: dict) -> int:
     cursor = conn.cursor()
     # Bước 1: thực hiện INSERT
     cursor.execute(sql_insert, list(row.values()))
-    # Bước 2: lấy ID vừa insert (tách riêng để tương thích SQL Server 2008)
-    cursor.execute("SELECT SCOPE_IDENTITY()")
-    new_id = int(cursor.fetchone()[0])
+    # Bước 2: lấy ID vừa insert — tương thích SQL Server 2008+
+    new_id = _fetch_last_identity(cursor, TABLE_HOADON)
     logger.info("Đã insert DHOADON — DHOADONID = %d", new_id)
     return new_id
 
