@@ -120,9 +120,24 @@ def insert_hoadon(conn: pyodbc.Connection, header_data: dict) -> int:
     cursor = conn.cursor()
     # Bước 1: thực hiện INSERT
     cursor.execute(sql_insert, list(row.values()))
-    # Bước 2: lấy ID vừa insert (tách riêng để tương thích SQL Server 2008)
+    # Bước 2: lấy ID vừa insert — fallback cho SQL Server 2008
     cursor.execute("SELECT SCOPE_IDENTITY()")
-    new_id = int(cursor.fetchone()[0])
+    row_id = cursor.fetchone()[0]
+
+    if row_id is None:
+        cursor.execute("SELECT @@IDENTITY")
+        row_id = cursor.fetchone()[0]
+
+    if row_id is None:
+        # IDENT_CURRENT does not support parameterized table names via ODBC;
+        # TABLE_HOADON is a module-level constant (not user input), so this is safe.
+        cursor.execute(f"SELECT IDENT_CURRENT('{TABLE_HOADON}')")  # noqa: S608
+        row_id = cursor.fetchone()[0]
+
+    if row_id is None:
+        raise RuntimeError("Không lấy được DHOADONID sau khi INSERT.")
+
+    new_id = int(row_id)
     logger.info("Đã insert DHOADON — DHOADONID = %d", new_id)
     return new_id
 
