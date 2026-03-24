@@ -710,13 +710,50 @@ class ToKhaiApp(tk.Tk):
             hdr_data["TTTK"] = self._txt_ghichu.get("1.0", "end").strip() or None
 
         # ---- INSERT vào DTOKHAIMD ----
+        # Mapping tên field form → tên cột DTOKHAIMD
+        HEADER_FIELD_TO_COL = {
+            "CoQuanHaiQuan":             "MA_HQ",
+            "NguoiXuatKhau_Ma":          "MA_DV",
+            "NguoiNhapKhau_Ma":          "DV_DT",
+            "MaLoaiHinh":                "MA_LH",
+            "SoToKhai":                  "SOTK",
+            "SoToKhaiDauTien":           "SOTK_DAU_TIEN",
+            "SoNhanh":                   "SOTK_NHANH",
+            "MaBoPhanXuLyToKhai":        "MA_BC_DV",
+            "SoHoaDon":                  "SO_HD",
+            "NgayPhatHanh":              "NGAY_HD",
+            "SoHopDong":                 "SO_HDTM",
+            "NgayHopDong":               "NGAY_HDTM",
+            "TongTriGiaHoaDon":          "TONGTGKB",
+            "MaDongTienCuaHoaDon":       "MA_NT",
+            "PhuongThucThanhToan":       "MA_PTTT",
+            "SoVanDon":                  "VAN_DON",
+            "NgayKhaiBao":               "NGAY_DK",
+            "MaHieuPhuongThucVanChuyen": "MA_PTVT",
+            "TongTrongLuongHang":        "TR_LUONG",
+            "SoLuongKien":               "SO_KIEN",
+            "KyHieuVaSoHieu":            "KY_HIEU_SO_HIEU",
+            "SoQuanLyNoiBo":             "MA_KHACH_HANG",
+            "TTTK":                      "TTTK",
+        }
+
+        # Remap tên field form → tên cột DB
+        hdr_data_remapped = {}
+        for form_field, value in hdr_data.items():
+            db_col = HEADER_FIELD_TO_COL.get(form_field, form_field)
+            hdr_data_remapped[db_col] = value
+
         # Identity column của DTOKHAIMD là _DToKhaiMDID
         identity_hdr = "_DToKhaiMDID"
         insertable_hdr = [c for c in hdr_cols if c != identity_hdr]
-        row_hdr = {k: v for k, v in hdr_data.items() if k in insertable_hdr}
+        row_hdr = {k: v for k, v in hdr_data_remapped.items() if k in insertable_hdr and v is not None}
 
         if not row_hdr:
             raise ValueError("Không có trường nào khớp với cột trong bảng DTOKHAIMD.")
+
+        for required_col in ("MA_HQ", "MA_DV", "DV_DT"):
+            if not row_hdr.get(required_col):
+                raise ValueError(f"Cột bắt buộc '{required_col}' không có giá trị. Vui lòng kiểm tra form.")
 
         cols_str = ", ".join(f"[{c}]" for c in row_hdr.keys())
         placeholders = ", ".join("?" for _ in row_hdr)
