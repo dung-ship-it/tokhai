@@ -705,18 +705,18 @@ class ToKhaiApp(tk.Tk):
             val = var.get().strip() if isinstance(var, tk.StringVar) else var.get()
             hdr_data[field] = val if val != "" else None
 
-        # Ghi chú không được map vào TTTK (char(1) dùng cho mã trạng thái)
-        # và không có cột nào khác trong DTOKHAIMD phù hợp, nên bỏ qua.
-
         # ---- INSERT vào DTOKHAIMD ----
         # Mapping tên field form → tên cột DTOKHAIMD
-        # Không map NguoiXuatKhau_Ten, NguoiNhapKhau_Ten/DiaChi, TTTK
-        # vì các cột tương ứng trong DTOKHAIMD không đủ độ dài để chứa dữ liệu form
         HEADER_FIELD_TO_COL = {
             # === 3 cột NOT NULL bắt buộc ===
             "CoQuanHaiQuan":             "MA_HQ",           # max 8 — '01B1' = 4 ký tự ✅
             "NguoiXuatKhau_Ma":          "MA_DV",           # max 14 — MST 10 số ✅
-            "NguoiNhapKhau_Ma":          "DV_DT",           # max 500 ✅
+            "NguoiNhapKhau_Ten":         "DV_DT",           # max 500 — tên công ty NK ✅
+            "NguoiNhapKhau_Ma":          "MA_BC_DT",        # max 50 — mã đối tác NK
+
+            # === Tên và địa chỉ bên xuất khẩu ===
+            "NguoiXuatKhau_Ten":         "TENCH",           # max 500 — tên công ty XK ✅
+            "NguoiXuatKhau_DiaChi":      "DIA_CHI_DV",      # max 300 ✅
 
             # === Các cột khác ===
             "MaLoaiHinh":                "MA_LH",           # max 8
@@ -726,23 +726,17 @@ class ToKhaiApp(tk.Tk):
             "MaBoPhanXuLyToKhai":        "MA_BC_DV",        # max 50 — chỉ map mã '00', không map tên
             "NguoiUyThac_Ma":            "MA_DVUT",         # max 50
             "MaHieuPhuongThucVanChuyen": "MA_PTVT",         # max 50
-            "NguoiXuatKhau_DiaChi":      "DIA_CHI_DV",      # max 300 ✅
             "SoVanDon":                  "VAN_DON",         # max 500
             "SoHoaDon":                  "SO_HD",           # max 500
+            "NgayPhatHanh":              "NGAY_HD",         # datetime — ngày phát hành hoá đơn
             "SoHopDong":                 "SO_HDTM",         # max 500
             "KyHieuVaSoHieu":            "KY_HIEU_SO_HIEU", # max 140
             "SoQuanLyNoiBo":             "MA_KHACH_HANG",   # max 100
 
-            # === Numeric/datetime — không cần giới hạn ký tự ===
+            # === Numeric — không cần giới hạn ký tự ===
             "TongTriGiaHoaDon":          "TONGTGKB",        # float
             "TongTrongLuongHang":        "TR_LUONG",        # numeric
             "SoLuongKien":               "SO_KIEN",         # numeric
-
-            # === KHÔNG map các field sau ===
-            # NguoiXuatKhau_Ten — không có cột tên đủ dài phù hợp
-            # NguoiNhapKhau_Ten — không có cột tên đủ dài phù hợp
-            # NguoiNhapKhau_DiaChi — không có cột địa chỉ NK rõ ràng
-            # TTTK — char(1), không map
         }
 
         # Remap tên field form → tên cột DB
@@ -779,6 +773,30 @@ class ToKhaiApp(tk.Tk):
         for required_col in ("MA_HQ", "MA_DV", "DV_DT"):
             if not row_hdr.get(required_col):
                 raise ValueError(f"Cột bắt buộc '{required_col}' không có giá trị. Vui lòng kiểm tra form.")
+
+        # ---- Hardcode cố định cho tờ khai xuất mới ----
+        HARDCODE_HDR = {
+            "_XorN":                "X",       # tờ khai xuất khẩu
+            "MA_GH":                "DAP",     # điều kiện hoá đơn
+            "MA_NT":                "VND",     # mã đồng tiền thanh toán
+            "MA_NT_TY_GIA_VND":     "VND",     # mã đồng tiền trị giá tính thuế
+            "MA_PTTT":              "KC",      # phương thức thanh toán
+            "PPT_GTGT":             "A",       # phân loại hình thức hoá đơn
+            "TR_LUONG":             1,         # mặc định 1 (ghi đè giá trị form)
+            "MA_THOI_HAN_NOP_THUE": "D",       # mã thời hạn nộp thuế
+            "MA_KHACH_HANG":        "#&XKTC",  # số quản lý nội bộ doanh nghiệp
+        }
+        for col, val in HARDCODE_HDR.items():
+            if col in insertable_hdr:
+                row_hdr[col] = val
+
+        # TONGTGTT = TONGTGKB (tổng trị giá tính thuế = tổng trị giá hoá đơn)
+        if "TONGTGKB" in row_hdr and "TONGTGTT" in insertable_hdr:
+            row_hdr["TONGTGTT"] = row_hdr["TONGTGKB"]
+
+        # Tờ khai mới chưa khai báo: không set TTTK, MA_NGHIEP_VU, PLUONG
+        for col in ("TTTK", "MA_NGHIEP_VU", "PLUONG"):
+            row_hdr.pop(col, None)
 
         cols_str = ", ".join(f"[{c}]" for c in row_hdr.keys())
         placeholders = ", ".join("?" for _ in row_hdr)
