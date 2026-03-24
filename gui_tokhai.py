@@ -705,36 +705,36 @@ class ToKhaiApp(tk.Tk):
             val = var.get().strip() if isinstance(var, tk.StringVar) else var.get()
             hdr_data[field] = val if val != "" else None
 
-        # Ghi chú
-        if hasattr(self, "_txt_ghichu"):
-            hdr_data["TTTK"] = self._txt_ghichu.get("1.0", "end").strip() or None
+        # Ghi chú không được map vào TTTK (char(1) dùng cho mã trạng thái)
+        # và không có cột nào khác trong DTOKHAIMD phù hợp, nên bỏ qua.
 
         # ---- INSERT vào DTOKHAIMD ----
         # Mapping tên field form → tên cột DTOKHAIMD
+        # Không map NguoiXuatKhau_Ten/DiaChi, NguoiNhapKhau_Ten/DiaChi, TTTK
+        # vì các cột tương ứng trong DTOKHAIMD không đủ độ dài để chứa dữ liệu form
         HEADER_FIELD_TO_COL = {
-            "CoQuanHaiQuan":             "MA_HQ",
-            "NguoiXuatKhau_Ma":          "MA_DV",
-            "NguoiNhapKhau_Ma":          "DV_DT",
-            "MaLoaiHinh":                "MA_LH",
+            "CoQuanHaiQuan":             "MA_HQ",           # max 8 ✅
+            "NguoiXuatKhau_Ma":          "MA_DV",           # max 14 ✅
+            "NguoiNhapKhau_Ma":          "DV_DT",           # max 500 ✅
+            "MaLoaiHinh":                "MA_LH",           # max 8
             "SoToKhai":                  "SOTK",
             "SoToKhaiDauTien":           "SOTK_DAU_TIEN",
             "SoNhanh":                   "SOTK_NHANH",
-            "MaBoPhanXuLyToKhai":        "MA_BC_DV",
-            "SoHoaDon":                  "SO_HD",
+            "MaBoPhanXuLyToKhai":        "MA_BC_DV",        # max 50 — chỉ map MÃ
+            "SoHoaDon":                  "SO_HD",           # max 500
             "NgayPhatHanh":              "NGAY_HD",
             "SoHopDong":                 "SO_HDTM",
             "NgayHopDong":               "NGAY_HDTM",
             "TongTriGiaHoaDon":          "TONGTGKB",
-            "MaDongTienCuaHoaDon":       "MA_NT",
-            "PhuongThucThanhToan":       "MA_PTTT",
-            "SoVanDon":                  "VAN_DON",
+            "MaDongTienCuaHoaDon":       "MA_NT",           # max 8
+            "PhuongThucThanhToan":       "MA_PTTT",         # max 10
+            "SoVanDon":                  "VAN_DON",         # max 500
             "NgayKhaiBao":               "NGAY_DK",
-            "MaHieuPhuongThucVanChuyen": "MA_PTVT",
+            "MaHieuPhuongThucVanChuyen": "MA_PTVT",         # max 50
             "TongTrongLuongHang":        "TR_LUONG",
             "SoLuongKien":               "SO_KIEN",
-            "KyHieuVaSoHieu":            "KY_HIEU_SO_HIEU",
-            "SoQuanLyNoiBo":             "MA_KHACH_HANG",
-            "TTTK":                      "TTTK",
+            "KyHieuVaSoHieu":            "KY_HIEU_SO_HIEU", # max 140
+            "SoQuanLyNoiBo":             "MA_KHACH_HANG",   # max 100
         }
 
         # Remap tên field form → tên cột DB
@@ -754,6 +754,22 @@ class ToKhaiApp(tk.Tk):
         for required_col in ("MA_HQ", "MA_DV", "DV_DT"):
             if not row_hdr.get(required_col):
                 raise ValueError(f"Cột bắt buộc '{required_col}' không có giá trị. Vui lòng kiểm tra form.")
+
+        # ---- Tự động truncate chuỗi vượt quá giới hạn cột ----
+        cursor.execute(
+            "SELECT COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_NAME = 'DTOKHAIMD' AND CHARACTER_MAXIMUM_LENGTH IS NOT NULL"
+        )
+        col_limits = {r[0]: r[1] for r in cursor.fetchall()}
+        for col, val in list(row_hdr.items()):
+            if isinstance(val, str) and col in col_limits and col_limits[col] > 0:
+                max_len = col_limits[col]
+                if len(val) > max_len:
+                    logger.warning(
+                        "Cột %s: giá trị '%s' dài %d ký tự, truncate xuống %d",
+                        col, val[:20] + ("..." if len(val) > 20 else ""), len(val), max_len,
+                    )
+                    row_hdr[col] = val[:max_len]
 
         cols_str = ", ".join(f"[{c}]" for c in row_hdr.keys())
         placeholders = ", ".join("?" for _ in row_hdr)
