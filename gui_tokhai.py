@@ -11,7 +11,44 @@ import json
 import logging
 import os
 import tkinter as tk
+import unicodedata
 from tkinter import filedialog, messagebox, ttk
+
+
+def _remove_diacritics(text: str) -> str:
+    """Chuyển chuỗi tiếng Việt có dấu sang không dấu."""
+    if not text:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", text)
+    ascii_str = "".join(c for c in nfkd if not unicodedata.combining(c))
+    # Xử lý đặc biệt cho đ/Đ không có trong NFKD
+    result = ascii_str.replace("đ", "d").replace("Đ", "D")
+    return result
+
+
+def _split_address(addr: str, n_parts: int, max_len: int) -> list:
+    """Tách địa chỉ thành tối đa n_parts phần, mỗi phần tối đa max_len ký tự."""
+    if not addr:
+        return []
+    # Tách theo dấu phẩy trước
+    segments = [s.strip() for s in addr.split(",") if s.strip()]
+    parts = []
+    current = ""
+    for seg in segments:
+        candidate = (current + ", " + seg).strip(", ") if current else seg
+        if len(candidate) <= max_len:
+            current = candidate
+        else:
+            if current:
+                parts.append(current)
+            current = seg
+    if current:
+        parts.append(current)
+    # Nếu vẫn có phần dài hơn max_len, cắt cứng
+    result = []
+    for p in parts[:n_parts]:
+        result.append(p[:max_len])
+    return result
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -33,7 +70,8 @@ DEFAULT_MAPPING = {
     "NguoiXuatKhau_MaBuuChinh": {"xml_field": "BenBanDienThoai", "default": ""},
     "NguoiNhapKhau_Ma": {"xml_field": "BenMuaMaSoThue", "default": ""},
     "NguoiNhapKhau_Ten": {"xml_field": "BenMuaTenDonVi", "default": ""},
-    "NguoiNhapKhau_DiaChi": {"xml_field": "BenMuaDiaChi", "default": ""},
+    "NguoiNhapKhau_MaNuoc": {"xml_field": "", "default": "VN"},
+    # Địa chỉ NK được tách thành 4 ô — xử lý riêng trong _load_xml
     "SoHoaDon": {"xml_field": "SoHoaDon", "default": ""},
     "NgayPhatHanh": {"xml_field": "NgayXuatHoaDon", "default": ""},
     "TongTriGiaHoaDon": {"xml_field": "TongTienThanhToan", "default": ""},
@@ -390,10 +428,12 @@ class ToKhaiApp(tk.Tk):
         tk.Label(grp2, text="Người nhập khẩu:", font=FONT_BOLD).grid(row=6, column=0, sticky="w", columnspan=4)
         self._add_entry_row(grp2, 7, "Mã", "NguoiNhapKhau_Ma")
         self._add_entry_row(grp2, 7, "Tên", "NguoiNhapKhau_Ten", col_offset=2)
-        self._add_entry_row(grp2, 8, "Mã bưu chính", "NguoiNhapKhau_MaBuuChinh")
-        self._add_entry_row(grp2, 8, "Mã nước", "NguoiNhapKhau_MaNuoc", col_offset=2)
-        self._add_entry_row(grp2, 9, "Địa chỉ", "NguoiNhapKhau_DiaChi", width=50, colspan=3)
-        self._add_entry_row(grp2, 10, "Mã người khai HQ", "MaNguoiKhaiHaiQuan")
+        self._add_entry_row(grp2, 8, "Mã nước", "NguoiNhapKhau_MaNuoc", col_offset=2, default="VN")
+        self._add_entry_row(grp2, 9,  "Địa chỉ 1", "NguoiNhapKhau_DiaChi1", width=30)
+        self._add_entry_row(grp2, 9,  "Địa chỉ 2", "NguoiNhapKhau_DiaChi2", width=30, col_offset=2)
+        self._add_entry_row(grp2, 10, "Địa chỉ 3", "NguoiNhapKhau_DiaChi3", width=30)
+        self._add_entry_row(grp2, 10, "Địa chỉ 4", "NguoiNhapKhau_DiaChi4", width=30, col_offset=2)
+        self._add_entry_row(grp2, 11, "Mã người khai HQ", "MaNguoiKhaiHaiQuan")
 
         # ---- Vận đơn ----
         grp3 = tk.LabelFrame(parent, text="Vận đơn", font=FONT_BOLD, padx=6, pady=4)
@@ -403,11 +443,13 @@ class ToKhaiApp(tk.Tk):
         self._add_entry_row(grp3, 0, "Số lượng kiện", "SoLuongKien", col_offset=2)
         self._add_entry_row(grp3, 1, "Tổng trọng lượng", "TongTrongLuongHang")
         self._add_combo_row(grp3, 1, "Điểm lưu kho", "MaDiemLuuKhoHangChoThongQuan", [], col_offset=2)
-        self._add_combo_row(grp3, 2, "Địa điểm nhận hàng cuối", "DiaDiemNhanHangCuoiCung", [])
-        self._add_combo_row(grp3, 2, "Địa điểm xếp hàng", "DiaDiemXepHang", [], col_offset=2)
-        self._add_entry_row(grp3, 3, "Phương tiện vận chuyển", "PhuongTienVanChuyen")
-        self._add_entry_row(grp3, 3, "Ngày hàng đi dự kiến", "NgayHangDiDuKien", col_offset=2)
-        self._add_entry_row(grp3, 4, "Ký hiệu và số hiệu", "KyHieuVaSoHieu")
+        self._add_entry_row(grp3, 2, "Địa điểm nhận hàng cuối (mã)", "DiaDiemNhanHangCuoiCung_Ma", default="VNZZZ")
+        self._add_entry_row(grp3, 2, "Địa điểm nhận hàng cuối (tên)", "DiaDiemNhanHangCuoiCung_Ten", col_offset=2)
+        self._add_entry_row(grp3, 3, "Địa điểm xếp hàng (mã)", "DiaDiemXepHang_Ma", default="VNZZZ")
+        self._add_entry_row(grp3, 3, "Địa điểm xếp hàng (tên)", "DiaDiemXepHang_Ten", col_offset=2)
+        self._add_entry_row(grp3, 4, "Phương tiện vận chuyển", "PhuongTienVanChuyen", default="Truck")
+        self._add_entry_row(grp3, 4, "Ngày hàng đi dự kiến", "NgayHangDiDuKien", col_offset=2)
+        self._add_entry_row(grp3, 5, "Ký hiệu và số hiệu", "KyHieuVaSoHieu")
 
         # ---- Hợp đồng ----
         grp4 = tk.LabelFrame(parent, text="Thông tin hợp đồng", font=FONT_BOLD, padx=6, pady=4)
@@ -595,6 +637,34 @@ class ToKhaiApp(tk.Tk):
             if field in self._fields:
                 self._fields[field].set(str(value))
 
+        # Chuyển tên công ty sang không dấu
+        for name_field in ("NguoiXuatKhau_Ten", "NguoiNhapKhau_Ten"):
+            if name_field in self._fields:
+                current_val = self._fields[name_field].get()
+                self._fields[name_field].set(_remove_diacritics(current_val))
+
+        # Tách địa chỉ NK thành 4 ô, chuyển không dấu
+        raw_addr = header.get("BenMuaDiaChi", "") or ""
+        addr_nodiacritic = _remove_diacritics(raw_addr)
+        addr_parts = _split_address(addr_nodiacritic, 4, 60)
+        for i, field in enumerate(["NguoiNhapKhau_DiaChi1", "NguoiNhapKhau_DiaChi2",
+                                    "NguoiNhapKhau_DiaChi3", "NguoiNhapKhau_DiaChi4"]):
+            val = addr_parts[i] if i < len(addr_parts) else ""
+            if field in self._fields:
+                self._fields[field].set(val)
+
+        # Địa điểm nhận hàng cuối = tên NK không dấu; địa điểm xếp hàng = tên XK không dấu
+        nk_ten = self._fields.get("NguoiNhapKhau_Ten")
+        xk_ten = self._fields.get("NguoiXuatKhau_Ten")
+        if "DiaDiemNhanHangCuoiCung_Ten" in self._fields and nk_ten:
+            self._fields["DiaDiemNhanHangCuoiCung_Ten"].set(nk_ten.get())
+        if "DiaDiemXepHang_Ten" in self._fields and xk_ten:
+            self._fields["DiaDiemXepHang_Ten"].set(xk_ten.get())
+
+        # Ngày hàng đi = hôm nay
+        if "NgayHangDiDuKien" in self._fields:
+            self._fields["NgayHangDiDuKien"].set(datetime.date.today().strftime("%d/%m/%Y"))
+
         # Điền danh sách hàng hóa
         self._item_rows = []
         for item in items:
@@ -718,6 +788,19 @@ class ToKhaiApp(tk.Tk):
             # === Tên và địa chỉ bên xuất khẩu ===
             "NguoiXuatKhau_Ten":         "TENCH",           # max 500 — tên công ty XK ✅
             "NguoiXuatKhau_DiaChi":      "DIA_CHI_DV",      # max 300 ✅
+
+            # === Địa chỉ và mã nước người nhập khẩu ===
+            "NguoiNhapKhau_DiaChi1":     "DIA_CHI_DT",      # địa chỉ NK ô 1
+            "NguoiNhapKhau_DiaChi2":     "DIA_CHI_DT2",     # địa chỉ NK ô 2
+            "NguoiNhapKhau_DiaChi3":     "DIA_CHI_DT3",     # địa chỉ NK ô 3
+            "NguoiNhapKhau_DiaChi4":     "DIA_CHI_DT4",     # địa chỉ NK ô 4
+            "NguoiNhapKhau_MaNuoc":      "MA_NUOC_DT",      # mã nước NK = "VN"
+
+            # === Địa điểm nhận/xếp hàng ===
+            "DiaDiemNhanHangCuoiCung_Ma": "MA_CANGNN",      # mã địa điểm nhận hàng
+            "DiaDiemNhanHangCuoiCung_Ten": "CANGNN",        # tên địa điểm nhận hàng
+            "DiaDiemXepHang_Ma":          "MA_CANGXEP",     # mã địa điểm xếp hàng
+            "DiaDiemXepHang_Ten":         "CANGXEP",        # tên địa điểm xếp hàng
 
             # === Các cột khác ===
             "MaLoaiHinh":                "MA_LH",           # max 8
