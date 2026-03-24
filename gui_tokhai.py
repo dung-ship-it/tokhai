@@ -293,6 +293,182 @@ class ItemEditDialog(tk.Toplevel):
 
 
 # ---------------------------------------------------------------------------
+# Cửa sổ Debug Mapping — xem field form đang map vào cột DB nào, giá trị là gì
+# ---------------------------------------------------------------------------
+
+# Mapping form field → tên cột DB (copy từ _do_insert để hiển thị)
+_HEADER_FIELD_TO_COL_DISPLAY = {
+    "CoQuanHaiQuan":              "MA_HQ",
+    "NguoiXuatKhau_Ma":           "MA_DV",
+    "NguoiNhapKhau_Ten":          "DV_DT",
+    "NguoiNhapKhau_Ma":           "(bỏ qua)",
+    "NguoiXuatKhau_Ten":          "_Ten_DV_L1",
+    "NguoiXuatKhau_DiaChi":       "DIA_CHI_DV",
+    "NguoiNhapKhau_DiaChi1":      "_DV_DT_L2",
+    "NguoiNhapKhau_DiaChi2":      "_DV_DT_L3",
+    "NguoiNhapKhau_DiaChi3":      "_DV_DT_L3",
+    "NguoiNhapKhau_DiaChi4":      "_DV_DT_L3",
+    "NguoiNhapKhau_MaNuoc":       "MA_NUOC_DT",
+    "DiaDiemNhanHangCuoiCung_Ma": "MA_CANGNN",
+    "DiaDiemNhanHangCuoiCung_Ten":"CANGNN",
+    "DiaDiemXepHang_Ma":          "MA_CANGXEP",
+    "DiaDiemXepHang_Ten":         "CANGXEP",
+    "MaLoaiHinh":                 "MA_LH",
+    "MaDongTienCuaHoaDon":        "MA_NT",
+    "PhuongThucThanhToan":        "MA_PTTT",
+    "SoToKhaiDauTien":            "SOTK_DAU_TIEN",
+    "MaBoPhanXuLyToKhai":         "MA_BC_DV",
+    "NguoiUyThac_Ma":             "MA_DVUT",
+    "MaHieuPhuongThucVanChuyen":  "MA_PTVT",
+    "SoVanDon":                   "VAN_DON",
+    "SoHoaDon":                   "SO_HD",
+    "NgayPhatHanh":               "NGAY_HD",
+    "SoHopDong":                  "SO_HDTM",
+    "KyHieuVaSoHieu":             "KY_HIEU_SO_HIEU",
+    "SoQuanLyNoiBo":              "MA_KHACH_HANG",
+    "TongTriGiaHoaDon":           "TONGTGKB",
+    "TongTrongLuongHang":         "TR_LUONG",
+    "SoLuongKien":                "SO_KIEN",
+}
+
+
+class DebugMappingWindow(tk.Toplevel):
+    """Hiển thị bảng: Field form | Cột DB | Giá trị hiện tại | Độ dài."""
+
+    def __init__(self, parent, fields: dict):
+        super().__init__(parent)
+        self.title("🔍 Debug Mapping — Field form → Cột DB → Giá trị")
+        self.geometry("900x600")
+        self.resizable(True, True)
+        self._fields = fields
+        self._build()
+
+    def _build(self):
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        # Thanh tìm kiếm
+        search_frame = tk.Frame(self, bg="#f0f0f0", padx=6, pady=4)
+        search_frame.grid(row=0, column=0, sticky="ew")
+        tk.Label(search_frame, text="🔎 Tìm:", font=FONT, bg="#f0f0f0").pack(side="left")
+        self._search_var = tk.StringVar()
+        self._search_var.trace_add("write", lambda *a: self._refresh())
+        tk.Entry(search_frame, textvariable=self._search_var, font=FONT, width=30).pack(side="left", padx=4)
+        tk.Button(search_frame, text="↺ Làm mới", font=FONT, command=self._refresh).pack(side="left", padx=8)
+        tk.Button(search_frame, text="📋 Copy tất cả", font=FONT, command=self._copy_all).pack(side="left", padx=4)
+
+        # Treeview
+        frame = tk.Frame(self)
+        frame.grid(row=1, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+
+        cols = ("field_form", "col_db", "value", "length", "status")
+        self._tree = ttk.Treeview(frame, columns=cols, show="headings", selectmode="browse")
+        headers = [
+            ("field_form", "Field Form",       200),
+            ("col_db",     "Cột DB",           160),
+            ("value",      "Giá trị hiện tại", 320),
+            ("length",     "Độ dài",            60),
+            ("status",     "Trạng thái",        80),
+        ]
+        for col_id, heading, width in headers:
+            self._tree.heading(col_id, text=heading, command=lambda c=col_id: self._sort(c))
+            self._tree.column(col_id, width=width, minwidth=40)
+
+        # Tag màu
+        self._tree.tag_configure("ok",      background="#e8f5e9")  # xanh nhạt — có giá trị
+        self._tree.tag_configure("empty",   background="#fff9c4")  # vàng nhạt — trống
+        self._tree.tag_configure("skipped", background="#f5f5f5")  # xám — bỏ qua
+        self._tree.tag_configure("unknown", background="#fce4ec")  # đỏ nhạt — không biết map vào đâu
+
+        sb_y = ttk.Scrollbar(frame, orient="vertical",   command=self._tree.yview)
+        sb_x = ttk.Scrollbar(frame, orient="horizontal", command=self._tree.xview)
+        self._tree.configure(yscrollcommand=sb_y.set, xscrollcommand=sb_x.set)
+        self._tree.grid(row=0, column=0, sticky="nsew")
+        sb_y.grid(row=0, column=1, sticky="ns")
+        sb_x.grid(row=1, column=0, sticky="ew")
+
+        # Status bar
+        self._lbl_status = tk.Label(self, text="", font=FONT, anchor="w", bg="#eeeeee")
+        self._lbl_status.grid(row=2, column=0, sticky="ew")
+
+        self._refresh()
+
+    def _refresh(self):
+        keyword = self._search_var.get().strip().lower()
+        for iid in self._tree.get_children():
+            self._tree.delete(iid)
+
+        count_ok = count_empty = count_skip = count_unknown = 0
+
+        # Gộp tất cả field: từ _HEADER_FIELD_TO_COL_DISPLAY + các field trong form chưa có mapping
+        all_fields = set(_HEADER_FIELD_TO_COL_DISPLAY.keys()) | {
+            k for k in self._fields if not k.startswith("_")
+        }
+
+        for field in sorted(all_fields):
+            if field.startswith("_"):
+                continue
+            col_db = _HEADER_FIELD_TO_COL_DISPLAY.get(field, "❓ chưa map")
+            var = self._fields.get(field)
+            if var is not None:
+                val = var.get() if isinstance(var, tk.StringVar) else str(var.get())
+            else:
+                val = "(field không có trên form)"
+
+            length = len(val) if val else 0
+
+            if col_db == "(bỏ qua)":
+                status = "skip"
+                tag = "skipped"
+                count_skip += 1
+            elif col_db.startswith("❓"):
+                status = "?"
+                tag = "unknown"
+                count_unknown += 1
+            elif val and val != "(field không có trên form)":
+                status = "✅"
+                tag = "ok"
+                count_ok += 1
+            else:
+                status = "⚠️"
+                tag = "empty"
+                count_empty += 1
+
+            row = (field, col_db, val, length if length > 0 else "", status)
+
+            # Lọc theo keyword
+            if keyword and not any(keyword in str(v).lower() for v in row):
+                continue
+
+            self._tree.insert("", "end", values=row, tags=(tag,))
+
+        self._lbl_status.config(
+            text=f"  Tổng: {count_ok + count_empty + count_skip + count_unknown} field  |  "
+                 f"✅ Có giá trị: {count_ok}  |  ⚠️ Trống: {count_empty}  |  "
+                 f"skip: {count_skip}  |  ❓ Chưa map: {count_unknown}"
+        )
+
+    def _sort(self, col):
+        """Sắp xếp theo cột khi click header."""
+        items = [(self._tree.set(iid, col), iid) for iid in self._tree.get_children("")]
+        items.sort(key=lambda x: x[0].lower())
+        for i, (_, iid) in enumerate(items):
+            self._tree.move(iid, "", i)
+
+    def _copy_all(self):
+        """Copy toàn bộ bảng vào clipboard dạng tab-separated."""
+        lines = ["Field Form\tCột DB\tGiá trị\tĐộ dài\tTrạng thái"]
+        for iid in self._tree.get_children():
+            vals = self._tree.item(iid, "values")
+            lines.append("\t".join(str(v) for v in vals))
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(lines))
+        messagebox.showinfo("Đã copy", f"Đã copy {len(lines)-1} dòng vào clipboard.", parent=self)
+
+
+# ---------------------------------------------------------------------------
 # Cửa sổ chính
 # ---------------------------------------------------------------------------
 
@@ -331,6 +507,10 @@ class ToKhaiApp(tk.Tk):
 
         tk.Button(
             bar, text="⚙️ Cấu hình Mapping", font=FONT, command=self._open_mapping
+        ).pack(side="left", padx=4)
+
+        tk.Button(
+            bar, text="🔍 Debug Mapping", font=FONT, command=self._open_debug_mapping
         ).pack(side="left", padx=4)
 
         tk.Button(
@@ -689,16 +869,16 @@ class ToKhaiApp(tk.Tk):
             if field in self._fields:
                 self._fields[field].set(str(value))
 
-        # Chuyển tên công ty sang không dấu
-        for name_field in ("NguoiXuatKhau_Ten", "NguoiNhapKhau_Ten"):
+        # Chuyển tên công ty sang không dấu (chỉ NK, giữ dấu XK)
+        for name_field in ("NguoiNhapKhau_Ten",):
             if name_field in self._fields:
                 current_val = self._fields[name_field].get()
                 self._fields[name_field].set(_remove_diacritics(current_val))
 
-        # Tách địa chỉ NK thành 4 ô, chuyển không dấu
+        # Tách địa chỉ NK thành 2 ô, chuyển không dấu
         raw_addr = header.get("BenMuaDiaChi", "") or ""
         addr_nodiacritic = _remove_diacritics(raw_addr)
-        addr_parts = _split_address(addr_nodiacritic, 4, 60)
+        addr_parts = _split_address(addr_nodiacritic, 2, 800)
         for i, field in enumerate(["NguoiNhapKhau_DiaChi1", "NguoiNhapKhau_DiaChi2",
                                     "NguoiNhapKhau_DiaChi3", "NguoiNhapKhau_DiaChi4"]):
             val = addr_parts[i] if i < len(addr_parts) else ""
@@ -746,6 +926,10 @@ class ToKhaiApp(tk.Tk):
             self._mapping = new_mapping
 
         MappingWindow(self, self._mapping, _on_save)
+
+    def _open_debug_mapping(self):
+        """Mở cửa sổ debug hiển thị: Field form → Cột DB → Giá trị hiện tại."""
+        DebugMappingWindow(self, self._fields)
 
     def _clear_form(self):
         if not messagebox.askyesno("Xác nhận", "Xóa toàn bộ dữ liệu trên form?"):
@@ -841,17 +1025,17 @@ class ToKhaiApp(tk.Tk):
             "CoQuanHaiQuan":             "MA_HQ",           # max 8 — '01B1' = 4 ký tự ✅
             "NguoiXuatKhau_Ma":          "MA_DV",           # max 14 — MST 10 số ✅
             "NguoiNhapKhau_Ten":         "DV_DT",           # max 500 — tên công ty NK ✅
-            "NguoiNhapKhau_Ma":          "MA_BC_DT",        # max 50 — mã đối tác NK
+            "NguoiNhapKhau_Ma":          "",                # bỏ trống — không map
 
             # === Tên và địa chỉ bên xuất khẩu ===
-            "NguoiXuatKhau_Ten":         "TENCH",           # max 500 — tên công ty XK ✅
+            "NguoiXuatKhau_Ten":         "_Ten_DV_L1",      # tên công ty XK có dấu
             "NguoiXuatKhau_DiaChi":      "DIA_CHI_DV",      # max 300 ✅
 
             # === Địa chỉ và mã nước người nhập khẩu ===
-            "NguoiNhapKhau_DiaChi1":     "DIA_CHI_DT",      # địa chỉ NK ô 1
-            "NguoiNhapKhau_DiaChi2":     "DIA_CHI_DT2",     # địa chỉ NK ô 2
-            "NguoiNhapKhau_DiaChi3":     "DIA_CHI_DT3",     # địa chỉ NK ô 3
-            "NguoiNhapKhau_DiaChi4":     "DIA_CHI_DT4",     # địa chỉ NK ô 4
+            "NguoiNhapKhau_DiaChi1":     "_DV_DT_L2",       # max 800
+            "NguoiNhapKhau_DiaChi2":     "_DV_DT_L3",       # max 255
+            "NguoiNhapKhau_DiaChi3":     "_DV_DT_L3",       # trùng — bị ghi đè không sao
+            "NguoiNhapKhau_DiaChi4":     "_DV_DT_L3",       # trùng — bị ghi đè không sao
             "NguoiNhapKhau_MaNuoc":      "MA_NUOC_DT",      # mã nước NK = "VN"
 
             # === Địa điểm nhận/xếp hàng ===
