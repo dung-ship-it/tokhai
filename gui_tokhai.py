@@ -62,6 +62,7 @@ logger = logging.getLogger(__name__)
 FONT = ("Arial", 9)
 FONT_BOLD = ("Arial", 9, "bold")
 MAPPING_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mapping_config.json")
+DATE_FORMAT = "%d/%m/%Y"
 
 DEFAULT_MAPPING = {
     "NguoiXuatKhau_Ma": {"xml_field": "BenBanMaSoThue", "default": ""},
@@ -663,7 +664,7 @@ class ToKhaiApp(tk.Tk):
 
         # Ngày hàng đi = hôm nay
         if "NgayHangDiDuKien" in self._fields:
-            self._fields["NgayHangDiDuKien"].set(datetime.date.today().strftime("%d/%m/%Y"))
+            self._fields["NgayHangDiDuKien"].set(datetime.date.today().strftime(DATE_FORMAT))
 
         # Điền danh sách hàng hóa
         self._item_rows = []
