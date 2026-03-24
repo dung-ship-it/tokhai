@@ -10,6 +10,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import tkinter as tk
 import unicodedata
 from tkinter import filedialog, messagebox, ttk
@@ -24,6 +25,34 @@ def _remove_diacritics(text: str) -> str:
     # Xử lý đặc biệt cho đ/Đ không có trong NFKD
     result = ascii_str.replace("đ", "d").replace("Đ", "D")
     return result
+
+
+def _abbreviate_company(text: str) -> str:
+    """Rút gọn tên công ty: bỏ dấu rồi thay các từ thông dụng bằng viết tắt."""
+    if not text:
+        return ""
+    s = _remove_diacritics(text).upper()
+    # Thứ tự quan trọng: từ dài nhất → ngắn nhất để tránh partial match
+    # (ví dụ: "CONG TY CO PHAN" phải đứng trước "CONG TY" và "CO PHAN")
+    replacements = [
+        ("CONG TY CO PHAN",                      "CTY CP"),
+        ("CONG TY TNHH MOT THANH VIEN",          "CTY TNHH MTV"),
+        ("CONG TY TNHH MTV",                     "CTY TNHH MTV"),
+        ("CONG TY TNHH",                         "CTY TNHH"),
+        ("CONG TY",                              "CTY"),
+        ("CO PHAN",                              "CP"),
+        ("TRACH NHIEM HUU HAN MOT THANH VIEN",   "TNHH MTV"),
+        ("TRACH NHIEM HUU HAN",                  "TNHH"),
+        ("CHI NHANH",                            "CN"),
+        ("THUONG MAI",                           "TM"),
+        ("SAN XUAT",                             "SX"),
+        ("XUAT NHAP KHAU",                       "XNK"),
+        (" VA ",                                 " & "),
+    ]
+    for full, abbr in replacements:
+        s = s.replace(full, abbr)
+    s = re.sub(r" +", " ", s).strip()
+    return s
 
 
 def _split_address(addr: str, n_parts: int, max_len: int) -> list:
@@ -63,6 +92,7 @@ FONT = ("Arial", 9)
 FONT_BOLD = ("Arial", 9, "bold")
 MAPPING_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mapping_config.json")
 DATE_FORMAT = "%d/%m/%Y"
+CANGNN_PORT_PREFIX = "VNZZZ"  # Mã cảng đích mặc định cho DiaDiemNhanHangCuoiCung
 
 DEFAULT_MAPPING = {
     "NguoiXuatKhau_Ma": {"xml_field": "BenBanMaSoThue", "default": ""},
@@ -278,6 +308,7 @@ class ToKhaiApp(tk.Tk):
         self._parsed = None
         self._mapping = _load_mapping()
         self._fields: dict[str, tk.Variable] = {}  # tên field → StringVar / IntVar
+        self._field_widgets: dict[str, tk.Entry] = {}  # tên field → Entry widget
         self._item_rows: list[dict] = []  # danh sách dict mỗi dòng hàng hóa
 
         self._build_toolbar()
@@ -503,6 +534,7 @@ class ToKhaiApp(tk.Tk):
         self._fields[field] = var
         entry = tk.Entry(parent, textvariable=var, font=FONT, width=width)
         entry.grid(row=row, column=col_offset + 1, columnspan=colspan, sticky="ew", padx=4, pady=2)
+        self._field_widgets[field] = entry
 
     def _add_combo_row(self, parent, row, label, field, values, default="", col_offset=0):
         """Thêm Label + Combobox vào lưới, lưu StringVar vào self._fields."""
@@ -513,6 +545,25 @@ class ToKhaiApp(tk.Tk):
         self._fields[field] = var
         cb = ttk.Combobox(parent, textvariable=var, values=values, font=FONT, width=18)
         cb.grid(row=row, column=col_offset + 1, sticky="ew", padx=4, pady=2)
+
+    def _warn_field_length(self, field_name: str, value: str, max_len: int):
+        """
+        Nếu value > max_len ký tự: tô nền đỏ nhạt cho Entry widget tương ứng,
+        và log warning để user biết cần rút gọn.
+        Nếu value <= max_len: xóa highlight (nền trắng).
+        """
+        widget = self._field_widgets.get(field_name)
+        if widget is None:
+            return
+        if len(value) > max_len:
+            widget.config(background="#ffcccc")  # đỏ nhạt
+            logger.warning(
+                "⚠️  Trường '%s' dài %d ký tự (giới hạn %d). "
+                "Vui lòng rút gọn tên công ty trước khi lưu.",
+                field_name, len(value), max_len,
+            )
+        else:
+            widget.config(background="white")
 
     # ------------------------------------------------------------------
     # Tab 2 — Danh sách hàng
@@ -654,13 +705,19 @@ class ToKhaiApp(tk.Tk):
             if field in self._fields:
                 self._fields[field].set(val)
 
-        # Địa điểm nhận hàng cuối = tên NK không dấu; địa điểm xếp hàng = tên XK không dấu
+        # Địa điểm nhận hàng cuối = "VNZZZ " + tên NK rút gọn; địa điểm xếp hàng = tên XK rút gọn
+        _CANGNN_MAX = 60
         nk_ten = self._fields.get("NguoiNhapKhau_Ten")
         xk_ten = self._fields.get("NguoiXuatKhau_Ten")
         if "DiaDiemNhanHangCuoiCung_Ten" in self._fields and nk_ten:
-            self._fields["DiaDiemNhanHangCuoiCung_Ten"].set(nk_ten.get())
+            abbr_nk = _abbreviate_company(nk_ten.get())
+            cangnn_val = (CANGNN_PORT_PREFIX + " " + abbr_nk).strip()
+            self._fields["DiaDiemNhanHangCuoiCung_Ten"].set(cangnn_val)
+            # Hiển thị cảnh báo nếu vượt quá giới hạn cột
+            self._warn_field_length("DiaDiemNhanHangCuoiCung_Ten", cangnn_val, _CANGNN_MAX)
         if "DiaDiemXepHang_Ten" in self._fields and xk_ten:
-            self._fields["DiaDiemXepHang_Ten"].set(xk_ten.get())
+            abbr_xk = _abbreviate_company(xk_ten.get())
+            self._fields["DiaDiemXepHang_Ten"].set(abbr_xk)
 
         # Ngày hàng đi = hôm nay
         if "NgayHangDiDuKien" in self._fields:
