@@ -710,31 +710,39 @@ class ToKhaiApp(tk.Tk):
 
         # ---- INSERT vào DTOKHAIMD ----
         # Mapping tên field form → tên cột DTOKHAIMD
-        # Không map NguoiXuatKhau_Ten/DiaChi, NguoiNhapKhau_Ten/DiaChi, TTTK
+        # Không map NguoiXuatKhau_Ten, NguoiNhapKhau_Ten/DiaChi, TTTK
         # vì các cột tương ứng trong DTOKHAIMD không đủ độ dài để chứa dữ liệu form
         HEADER_FIELD_TO_COL = {
-            "CoQuanHaiQuan":             "MA_HQ",           # max 8 ✅
-            "NguoiXuatKhau_Ma":          "MA_DV",           # max 14 ✅
+            # === 3 cột NOT NULL bắt buộc ===
+            "CoQuanHaiQuan":             "MA_HQ",           # max 8 — '01B1' = 4 ký tự ✅
+            "NguoiXuatKhau_Ma":          "MA_DV",           # max 14 — MST 10 số ✅
             "NguoiNhapKhau_Ma":          "DV_DT",           # max 500 ✅
+
+            # === Các cột khác ===
             "MaLoaiHinh":                "MA_LH",           # max 8
-            "SoToKhai":                  "SOTK",
-            "SoToKhaiDauTien":           "SOTK_DAU_TIEN",
-            "SoNhanh":                   "SOTK_NHANH",
-            "MaBoPhanXuLyToKhai":        "MA_BC_DV",        # max 50 — chỉ map MÃ
-            "SoHoaDon":                  "SO_HD",           # max 500
-            "NgayPhatHanh":              "NGAY_HD",
-            "SoHopDong":                 "SO_HDTM",
-            "NgayHopDong":               "NGAY_HDTM",
-            "TongTriGiaHoaDon":          "TONGTGKB",
             "MaDongTienCuaHoaDon":       "MA_NT",           # max 8
             "PhuongThucThanhToan":       "MA_PTTT",         # max 10
-            "SoVanDon":                  "VAN_DON",         # max 500
-            "NgayKhaiBao":               "NGAY_DK",
+            "SoToKhaiDauTien":           "SOTK_DAU_TIEN",   # max 12
+            "MaBoPhanXuLyToKhai":        "MA_BC_DV",        # max 50 — chỉ map mã '00', không map tên
+            "NguoiUyThac_Ma":            "MA_DVUT",         # max 50
             "MaHieuPhuongThucVanChuyen": "MA_PTVT",         # max 50
-            "TongTrongLuongHang":        "TR_LUONG",
-            "SoLuongKien":               "SO_KIEN",
+            "NguoiXuatKhau_DiaChi":      "DIA_CHI_DV",      # max 300 ✅
+            "SoVanDon":                  "VAN_DON",         # max 500
+            "SoHoaDon":                  "SO_HD",           # max 500
+            "SoHopDong":                 "SO_HDTM",         # max 500
             "KyHieuVaSoHieu":            "KY_HIEU_SO_HIEU", # max 140
             "SoQuanLyNoiBo":             "MA_KHACH_HANG",   # max 100
+
+            # === Numeric/datetime — không cần giới hạn ký tự ===
+            "TongTriGiaHoaDon":          "TONGTGKB",        # float
+            "TongTrongLuongHang":        "TR_LUONG",        # numeric
+            "SoLuongKien":               "SO_KIEN",         # numeric
+
+            # === KHÔNG map các field sau ===
+            # NguoiXuatKhau_Ten — không có cột tên đủ dài phù hợp
+            # NguoiNhapKhau_Ten — không có cột tên đủ dài phù hợp
+            # NguoiNhapKhau_DiaChi — không có cột địa chỉ NK rõ ràng
+            # TTTK — char(1), không map
         }
 
         # Remap tên field form → tên cột DB
@@ -751,25 +759,26 @@ class ToKhaiApp(tk.Tk):
         if not row_hdr:
             raise ValueError("Không có trường nào khớp với cột trong bảng DTOKHAIMD.")
 
-        for required_col in ("MA_HQ", "MA_DV", "DV_DT"):
-            if not row_hdr.get(required_col):
-                raise ValueError(f"Cột bắt buộc '{required_col}' không có giá trị. Vui lòng kiểm tra form.")
-
         # ---- Tự động truncate chuỗi vượt quá giới hạn cột ----
         cursor.execute(
             "SELECT COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS "
-            "WHERE TABLE_NAME = 'DTOKHAIMD' AND CHARACTER_MAXIMUM_LENGTH IS NOT NULL"
+            "WHERE TABLE_NAME = 'DTOKHAIMD' AND CHARACTER_MAXIMUM_LENGTH IS NOT NULL "
+            "AND CHARACTER_MAXIMUM_LENGTH > 0"
         )
         col_limits = {r[0]: r[1] for r in cursor.fetchall()}
-        for col, val in list(row_hdr.items()):
-            if isinstance(val, str) and col in col_limits and col_limits[col] > 0:
+        for col, val in row_hdr.items():
+            if isinstance(val, str) and col in col_limits:
                 max_len = col_limits[col]
                 if len(val) > max_len:
                     logger.warning(
-                        "Cột %s: giá trị '%s' dài %d ký tự, truncate xuống %d",
-                        col, val[:20] + ("..." if len(val) > 20 else ""), len(val), max_len,
+                        "Cột %s: cắt ngắn từ %d → %d ký tự (giá trị bị cắt: %r)",
+                        col, len(val), max_len, val[max_len - 10 : max_len + 10],
                     )
                     row_hdr[col] = val[:max_len]
+
+        for required_col in ("MA_HQ", "MA_DV", "DV_DT"):
+            if not row_hdr.get(required_col):
+                raise ValueError(f"Cột bắt buộc '{required_col}' không có giá trị. Vui lòng kiểm tra form.")
 
         cols_str = ", ".join(f"[{c}]" for c in row_hdr.keys())
         placeholders = ", ".join("?" for _ in row_hdr)
