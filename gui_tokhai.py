@@ -370,7 +370,6 @@ class ToKhaiApp(tk.Tk):
         self._add_entry_row(grp, 4, "Mã bộ phận xử lý", "MaBoPhanXuLyToKhai", col_offset=2, default="00")
         self._add_combo_row(grp, 5, "Phương thức vận chuyển", "MaHieuPhuongThucVanChuyen",
                             ["10", "20", "30", "40"])
-        self._add_entry_row(grp, 5, "Ngày khai báo", "NgayKhaiBao", col_offset=2)
 
         # ---- Đơn vị xuất nhập khẩu ----
         grp2 = tk.LabelFrame(parent, text="Đơn vị xuất nhập khẩu", font=FONT_BOLD, padx=6, pady=4)
