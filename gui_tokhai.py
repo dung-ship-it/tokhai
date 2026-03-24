@@ -809,6 +809,32 @@ class ToKhaiApp(tk.Tk):
         for col in ("TTTK", "MA_NGHIEP_VU", "PLUONG"):
             row_hdr.pop(col, None)
 
+        # ---- Tự động convert giá trị sang đúng kiểu số dựa trên DATA_TYPE thực tế ----
+        cursor.execute(
+            "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_NAME = 'DTOKHAIMD'"
+        )
+        col_types = {r[0]: r[1].lower() for r in cursor.fetchall()}
+
+        NUMERIC_TYPES = {"float", "real", "numeric", "decimal", "int", "bigint", "smallint", "tinyint", "money", "smallmoney"}
+
+        for col in list(row_hdr.keys()):
+            dtype = col_types.get(col, "")
+            val = row_hdr[col]
+            if dtype in NUMERIC_TYPES and isinstance(val, str):
+                val_stripped = val.strip()
+                if val_stripped == "":
+                    row_hdr[col] = None
+                else:
+                    try:
+                        if dtype in ("int", "bigint", "smallint", "tinyint"):
+                            row_hdr[col] = int(float(val_stripped))
+                        else:
+                            row_hdr[col] = float(val_stripped)
+                    except (ValueError, TypeError):
+                        row_hdr[col] = None
+                        logger.warning("Cột %s: không thể convert '%s' sang %s, set None", col, val_stripped, dtype)
+
         cols_str = ", ".join(f"[{c}]" for c in row_hdr.keys())
         placeholders = ", ".join("?" for _ in row_hdr)
         sql_hdr = f"INSERT INTO DTOKHAIMD ({cols_str}) VALUES ({placeholders})"
@@ -839,16 +865,30 @@ class ToKhaiApp(tk.Tk):
             "TriGiaHoaDon": "TRIGIA_TT",
         }
 
+        # ---- Query kiểu dữ liệu cột DHANGMDDK (một lần trước vòng lặp) ----
+        cursor.execute(
+            "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_NAME = 'DHANGMDDK'"
+        )
+        det_col_types = {r[0]: r[1].lower() for r in cursor.fetchall()}
+
         for idx, item in enumerate(self._item_rows, start=1):
             item_data = {fk_det: new_id, "STTHANG": idx}
             for form_field, db_col in FIELD_TO_COL.items():
                 val = item.get(form_field, "")
-                # Chuyển số thực cho các cột decimal
-                if db_col in ("LUONG", "LUONG2", "DGIA_TT", "TRIGIA_TT", "TRIGIA_KB", "DGIA_KB"):
-                    try:
-                        val = float(val) if val != "" else None
-                    except (ValueError, TypeError):
+                dtype = det_col_types.get(db_col, "")
+                if dtype in NUMERIC_TYPES and isinstance(val, str):
+                    val_stripped = val.strip() if val else ""
+                    if val_stripped == "":
                         val = None
+                    else:
+                        try:
+                            if dtype in ("int", "bigint", "smallint", "tinyint"):
+                                val = int(float(val_stripped))
+                            else:
+                                val = float(val_stripped)
+                        except (ValueError, TypeError):
+                            val = None
                 else:
                     val = val if val != "" else None
                 item_data[db_col] = val
