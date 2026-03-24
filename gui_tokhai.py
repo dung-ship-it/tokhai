@@ -6,6 +6,7 @@ Cách chạy:
     python gui_tokhai.py
 """
 
+import datetime
 import json
 import logging
 import os
@@ -770,21 +771,31 @@ class ToKhaiApp(tk.Tk):
                     )
                     row_hdr[col] = val[:max_len]
 
-        for required_col in ("MA_HQ", "MA_DV", "DV_DT"):
+        for required_col in ("MA_HQ", "MA_LH", "MA_DV", "DV_DT"):
             if not row_hdr.get(required_col):
                 raise ValueError(f"Cột bắt buộc '{required_col}' không có giá trị. Vui lòng kiểm tra form.")
 
         # ---- Hardcode cố định cho tờ khai xuất mới ----
+        _now = datetime.datetime.now()
         HARDCODE_HDR = {
-            "_XorN":                "X",       # tờ khai xuất khẩu
-            "MA_GH":                "DAP",     # điều kiện hoá đơn
-            "MA_NT":                "VND",     # mã đồng tiền thanh toán
-            "MA_NT_TY_GIA_VND":     "VND",     # mã đồng tiền trị giá tính thuế
-            "MA_PTTT":              "KC",      # phương thức thanh toán
-            "PPT_GTGT":             "A",       # phân loại hình thức hoá đơn
-            "TR_LUONG":             1,         # mặc định 1 (ghi đè giá trị form)
-            "MA_THOI_HAN_NOP_THUE": "D",       # mã thời hạn nộp thuế
-            "MA_KHACH_HANG":        "#&XKTC",  # số quản lý nội bộ doanh nghiệp
+            "_XorN":                "X",          # tờ khai xuất khẩu
+            "MA_GH":                "DAP",        # điều kiện hoá đơn
+            "MA_NT":                "VND",        # mã đồng tiền thanh toán
+            "MA_NT_TY_GIA_VND":     "VND",        # mã đồng tiền trị giá tính thuế
+            "MA_PTTT":              "KC",         # phương thức thanh toán
+            "PPT_GTGT":             "A",          # phân loại hình thức hoá đơn
+            "TR_LUONG":             1,            # mặc định 1 (ghi đè giá trị form)
+            "MA_THOI_HAN_NOP_THUE": "D",          # mã thời hạn nộp thuế
+            "MA_KHACH_HANG":        "#&XKTC",     # số quản lý nội bộ doanh nghiệp
+            # Các cột bắt buộc để ECUS hiển thị tờ khai
+            "APP_NAME":             "ECUSK5NET",  # ECUS filter theo cột này
+            "NGUOINHAP":            "Root",       # ECUS kiểm tra cột này
+            "NGAYNHAP":             _now,         # ngày nhập tờ khai
+            "NGAY_DK":              _now,         # ngày đăng ký (nếu chưa có)
+            "IsVNACCS":             1,            # bắt buộc
+            "IsVersion2":           1,            # bắt buộc
+            "NHOMTK":               2,            # bắt buộc
+            "PhienBan_TK":          "1",          # phải là '1', không phải 'CT'
         }
         for col, val in HARDCODE_HDR.items():
             if col in insertable_hdr:
