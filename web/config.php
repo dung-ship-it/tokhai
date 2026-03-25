@@ -23,7 +23,7 @@
 define('DB_SERVER',   getenv('ECUS_SERVER')   ?: '(LOCAL)\\ECUSSQL2008');
 define('DB_NAME',     getenv('ECUS_DATABASE') ?: 'ECUS5VNACCS');
 define('DB_USER',     getenv('ECUS_USERNAME') ?: 'sa');
-define('DB_PASS',     getenv('ECUS_PASSWORD') ?: '');
+define('DB_PASS',     getenv('ECUS_PASSWORD') ?: '123456');
 
 // Tên các bảng cần thao tác
 define('TABLE_TOKHAI', 'DTOKHAIMD');
