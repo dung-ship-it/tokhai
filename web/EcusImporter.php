@@ -10,7 +10,7 @@ class EcusImporter
     private PDO $pdo;
 
     // ================================================================
-    // CONSTRUCTOR: Nhận PDO hoặc tự tạo kết nối từ config.php
+    // CONSTRUCTOR
     // ================================================================
     public function __construct(?PDO $pdo = null)
     {
@@ -26,8 +26,7 @@ class EcusImporter
         $server = defined('DB_SERVER') ? DB_SERVER : 'localhost';
         $dbName = defined('DB_NAME')   ? DB_NAME   : 'ECUS5VNACCS';
         $user   = defined('DB_USER')   ? DB_USER   : 'sa';
-        $pass   = defined('DB_PASS')   ? DB_PASS   : '';
-
+        $pass   = defined('DB_PASS')   ? DB_PASS   : '';\n
         $drivers = PDO::getAvailableDrivers();
 
         if (in_array('sqlsrv', $drivers, true)) {
@@ -64,22 +63,28 @@ class EcusImporter
         if ($val === null || $val === '') {
             return 0.0;
         }
+        if (is_int($val) || is_float($val)) {
+            return (float)$val;
+        }
         $s = trim((string)$val);
-        $s = preg_replace('/[^
-\d,.]/', '', $s);
+        // Chỉ giữ lại chữ số, dấu phẩy và dấu chấm — regex KHÔNG có newline
+        $s = preg_replace('/[^\d,.]/', '', $s);
         if ($s === '' || $s === null) {
             return 0.0;
         }
         if (str_contains($s, ',') && str_contains($s, '.')) {
+            // "1.500,50" → dấu phẩy là thập phân
             if (strrpos($s, ',') > strrpos($s, '.')) {
                 $s = str_replace('.', '', $s);
                 $s = str_replace(',', '.', $s);
             } else {
+                // "1,500.50" → dấu phẩy là ngàn
                 $s = str_replace(',', '', $s);
             }
         } elseif (str_contains($s, ',')) {
             $s = str_replace(',', '.', $s);
         }
+        // Nhiều dấu chấm: "1.500.000"
         $parts = explode('.', $s);
         if (count($parts) > 2) {
             $decimal = array_pop($parts);
@@ -100,8 +105,11 @@ class EcusImporter
         if ($val === null || $val === '') {
             return 0;
         }
-        $s = preg_replace('/[^
-\d]/', '', (string)$val);
+        if (is_int($val)) {
+            return $val;
+        }
+        // Chỉ giữ chữ số — regex KHÔNG có newline
+        $s = preg_replace('/[^\\d]/', '', (string)$val);
         return ($s !== '' && $s !== null) ? (int)$s : 0;
     }
 
@@ -212,7 +220,7 @@ class EcusImporter
             ':IsToKhaiCT'               => 0,
         ]);
 
-        // Lấy ID vừa insert — sqlsrv PDO driver không hỗ trợ lastInsertId() đáng tin cậy
+        // Lấy ID vừa insert
         $newId = 0;
         try {
             $row   = $this->pdo->query("SELECT CAST(SCOPE_IDENTITY() AS BIGINT) AS id")->fetch(PDO::FETCH_ASSOC);
@@ -276,7 +284,10 @@ class EcusImporter
             $luong   = $this->toFloat($item['Luong']                   ?? 0);
             $luong2  = $this->toFloat($item['Luong2']                  ?? $luong);
             $donGia  = $this->toFloat($item['DonGiaHoaDon']            ?? 0);
-            $triGia  = $this->toFloat($item['TriGiaHoaDon']            ?? ($donGia * $luong));
+            $triGia  = $this->toFloat($item['TriGiaHoaDon']            ?? 0);
+            if ($triGia == 0.0 && $donGia > 0.0 && $luong > 0.0) {
+                $triGia = $donGia * $luong;
+            }
 
             $stmt->execute([
                 ':_DToKhaiMDID'      => $tkId,
@@ -305,7 +316,7 @@ class EcusImporter
                 ':MA_NT_DGIA_TT'     => 'VND',
                 ':DVT_DGIA_TT'       => $dvt,
                 ':MA_NT_THUE_XNK'    => 'VND',
-                ':THUE_XNK'          => 0,
+                ':THUE_XNK'          => 0.0,
                 ':LOAI_HANG'         => 2,
                 ':MA_NT_TRIGIA_TT_S' => 'VND',
                 ':TRIGIA_TT_S'       => $triGia,
@@ -353,7 +364,6 @@ class EcusImporter
 
     // ================================================================
     // PUBLIC: TRANSACTION WRAPPER
-    // Trả về key 'tokhai_id' và 'inserted_items' để tương thích submit.php
     // ================================================================
     public function import(array $headerData, array $items): array
     {
